@@ -149,8 +149,7 @@ class MHTMLConverter:
             # Process HTML to embed CSS and convert resources
             # This happens AFTER sanitization, so legitimate resources are safely embedded
             processor = HTMLProcessor(html_content, filtered_resources)
-            processor.embed_css()  # This now updates processor's internal state
-            final_html = processor.convert_to_data_uris()
+            final_html = processor.process()
 
             return final_html
 

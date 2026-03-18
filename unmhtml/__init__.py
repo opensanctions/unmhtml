@@ -34,8 +34,7 @@ Advanced Usage:
     >>> html, resources = parser.parse()
     >>>
     >>> processor = HTMLProcessor(html, resources)
-    >>> html_with_css = processor.embed_css()
-    >>> standalone_html = processor.convert_to_data_uris()
+    >>> standalone_html = processor.process()
 """
 
 from .converter import MHTMLConverter
