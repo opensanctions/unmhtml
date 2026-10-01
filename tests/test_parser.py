@@ -1,6 +1,8 @@
-import pytest
-import email
 import base64
+import email
+
+import pytest
+
 from unmhtml.parser import MHTMLParser
 
 
@@ -142,7 +144,7 @@ Content-Type: {content_type}
 """
 
         parser = MHTMLParser(mhtml_content)
-        html, resources = parser.parse()
+        html, _ = parser.parse()
 
         if expected:
             assert "<html>" in html

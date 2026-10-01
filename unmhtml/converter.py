@@ -1,12 +1,13 @@
-from typing import Dict
+from __future__ import annotations
+
 from .parser import MHTMLParser
 from .processor import HTMLProcessor
 from .security import (
-    remove_javascript_content,
-    sanitize_css,
-    remove_forms,
-    remove_meta_redirects,
     is_javascript_file,
+    remove_forms,
+    remove_javascript_content,
+    remove_meta_redirects,
+    sanitize_css,
 )
 
 
@@ -78,7 +79,7 @@ class MHTMLConverter:
 
         Raises:
             ValueError: If the file cannot be read or processed
-            FileNotFoundError: If the specified file does not exist
+            TypeError: If the MHTML content is not a string
 
         Example:
             >>> converter = MHTMLConverter()
@@ -89,9 +90,9 @@ class MHTMLConverter:
         try:
             with open(mhtml_path, "r", encoding="utf-8") as f:
                 mhtml_content = f.read()
-            return self.convert(mhtml_content)
-        except Exception as e:
-            raise ValueError(f"Failed to read MHTML file: {e}")
+        except (OSError, UnicodeDecodeError) as e:
+            raise ValueError(f"Failed to read MHTML file: {e}") from e
+        return self.convert(mhtml_content)
 
     def convert(self, mhtml_content: str) -> str:
         """
@@ -105,6 +106,7 @@ class MHTMLConverter:
 
         Raises:
             ValueError: If the MHTML content is malformed or cannot be processed
+            TypeError: If the MHTML content is not a string
 
         Example:
             >>> with open('page.mhtml', 'r') as f:
@@ -112,53 +114,49 @@ class MHTMLConverter:
             >>> converter = MHTMLConverter()
             >>> html = converter.convert(mhtml_content)
         """
-        try:
-            # Parse MHTML to extract HTML and resources
-            parser = MHTMLParser(mhtml_content)
-            main_html, resources = parser.parse()
+        if not isinstance(mhtml_content, str):
+            raise TypeError(
+                f"MHTML content must be a string, got {type(mhtml_content).__name__}"
+            )
 
-            # If we got the original content back, it means the MHTML is malformed
-            if main_html == mhtml_content:
-                raise ValueError("No HTML content found in MHTML")
+        # Parse MHTML to extract HTML and resources
+        parser = MHTMLParser(mhtml_content)
+        main_html, resources = parser.parse()
 
-            if not main_html:
-                raise ValueError("No HTML content found in MHTML")
+        # If we got the original content back, it means the MHTML is malformed
+        if not main_html or main_html == mhtml_content:
+            raise ValueError("Failed to convert MHTML: No HTML content found in MHTML")
 
-            # Apply security sanitization BEFORE resource embedding
-            # This ensures dangerous content is removed first, then safe resources are embedded
-            html_content = main_html
+        # Apply security sanitization BEFORE resource embedding
+        # This ensures dangerous content is removed first, then safe resources are embedded
+        html_content = main_html
 
-            if self.remove_javascript:
-                html_content = remove_javascript_content(html_content)
+        if self.remove_javascript:
+            html_content = remove_javascript_content(html_content)
 
-            if self.sanitize_css:
-                html_content = sanitize_css(html_content)
+        if self.sanitize_css:
+            html_content = sanitize_css(html_content)
 
-            if self.remove_forms:
-                html_content = remove_forms(html_content)
+        if self.remove_forms:
+            html_content = remove_forms(html_content)
 
-            if self.remove_meta_redirects:
-                html_content = remove_meta_redirects(html_content)
+        if self.remove_meta_redirects:
+            html_content = remove_meta_redirects(html_content)
 
-            # Filter out JavaScript files from resources if requested
-            if self.remove_javascript:
-                filtered_resources = self._filter_javascript_resources(resources)
-            else:
-                filtered_resources = resources
+        # Filter out JavaScript files from resources if requested
+        if self.remove_javascript:
+            filtered_resources = self._filter_javascript_resources(resources)
+        else:
+            filtered_resources = resources
 
-            # Process HTML to embed CSS and convert resources
-            # This happens AFTER sanitization, so legitimate resources are safely embedded
-            processor = HTMLProcessor(html_content, filtered_resources)
-            final_html = processor.process()
-
-            return final_html
-
-        except Exception as e:
-            raise ValueError(f"Failed to convert MHTML: {e}")
+        # Process HTML to embed CSS and convert resources
+        # This happens AFTER sanitization, so legitimate resources are safely embedded
+        processor = HTMLProcessor(html_content, filtered_resources)
+        return processor.process()
 
     def _filter_javascript_resources(
-        self, resources: Dict[str, bytes]
-    ) -> Dict[str, bytes]:
+        self, resources: dict[str, bytes]
+    ) -> dict[str, bytes]:
         """
         Filter out JavaScript files from resources to prevent embedding.
 

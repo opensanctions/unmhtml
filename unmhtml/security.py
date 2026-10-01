@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from .regex_utils import (
     RegexPatterns,
+    remove_event_handlers,
     remove_html_tags,
     replace_attribute_values,
-    remove_event_handlers,
     sanitize_inline_styles,
 )
 
@@ -63,7 +65,7 @@ def remove_javascript_content(html: str) -> str:
     return html
 
 
-def is_javascript_file(url: str, content_type: str = None) -> bool:
+def is_javascript_file(url: str, content_type: str | None = None) -> bool:
     """
     Check if a resource is a JavaScript file.
 

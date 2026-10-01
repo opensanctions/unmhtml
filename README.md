@@ -17,10 +17,10 @@ from unmhtml import MHTMLConverter
 
 # Convert MHTML file to HTML (secure by default)
 converter = MHTMLConverter()
-html_content = converter.convert_file('saved_page.mhtml')
+html_content = converter.convert_file("saved_page.mhtml")
 
 # Save as standalone HTML
-with open('output.html', 'w') as f:
+with open("output.html", "w") as f:
     f.write(html_content)
 
 # Unsafe conversion preserving original content
@@ -28,9 +28,9 @@ unsafe_converter = MHTMLConverter(
     remove_javascript=False,
     sanitize_css=False,
     remove_forms=False,
-    remove_meta_redirects=False
+    remove_meta_redirects=False,
 )
-html_content = unsafe_converter.convert_file('trusted_page.mhtml')
+html_content = unsafe_converter.convert_file("trusted_page.mhtml")
 ```
 
 ## Features

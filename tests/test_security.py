@@ -1,10 +1,11 @@
 import pytest
+
 from unmhtml.security import (
-    remove_javascript_content,
     is_javascript_file,
-    sanitize_css,
     remove_forms,
+    remove_javascript_content,
     remove_meta_redirects,
+    sanitize_css,
 )
 
 

@@ -42,4 +42,4 @@ from .parser import MHTMLParser
 from .processor import HTMLProcessor
 
 __version__ = "0.3.0"
-__all__ = ["MHTMLConverter", "MHTMLParser", "HTMLProcessor"]
+__all__ = ["HTMLProcessor", "MHTMLConverter", "MHTMLParser"]

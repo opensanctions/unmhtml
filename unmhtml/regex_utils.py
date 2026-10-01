@@ -1,6 +1,6 @@
-import re
-from typing import Pattern, List
+from __future__ import annotations
 
+import re
 
 # Common regex flags used throughout the application
 COMMON_FLAGS = re.DOTALL | re.IGNORECASE
@@ -95,7 +95,7 @@ class RegexPatterns:
     )
 
 
-def remove_html_tags(html: str, patterns: List[Pattern]) -> str:
+def remove_html_tags(html: str, patterns: list[re.Pattern]) -> str:
     """
     Generic HTML tag removal utility.
 
@@ -119,7 +119,7 @@ def remove_html_tags(html: str, patterns: List[Pattern]) -> str:
     return html
 
 
-def replace_attribute_values(html: str, pattern: Pattern, replacement: str) -> str:
+def replace_attribute_values(html: str, pattern: re.Pattern, replacement: str) -> str:
     """
     Generic attribute value replacement utility.
 

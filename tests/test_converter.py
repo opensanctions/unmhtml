@@ -1,4 +1,5 @@
 import pytest
+
 from unmhtml.converter import MHTMLConverter
 
 
@@ -127,7 +128,7 @@ PCFET0NUWVBFIGh0bWw+CjxodG1sPgo8aGVhZD4KICAgIDx0aXRsZT5UZXN0PC90aXRsZT4KPC9oZWFk
             converter.convert("")
 
         # Test with None input
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeError, match="must be a string"):
             converter.convert(None)
 
     def test_convert_multiple_resources(self):
@@ -271,7 +272,6 @@ iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAA
         "invalid_input",
         [
             "",
-            None,
             "not mhtml at all",
             "From: test\n\nEmpty content",
         ],

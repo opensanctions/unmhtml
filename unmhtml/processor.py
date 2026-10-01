@@ -1,15 +1,16 @@
-import re
+from __future__ import annotations
+
 import base64
 import html
 import mimetypes
+import re
 from html.parser import HTMLParser
-from typing import Dict
 
 
 class _ResourceEmbeddingParser(HTMLParser):
     """Internal HTMLParser subclass that embeds resources in a single pass."""
 
-    def __init__(self, processor: "HTMLProcessor"):
+    def __init__(self, processor: HTMLProcessor):
         super().__init__(convert_charrefs=False)
         self.processor = processor
         self.output: list[str] = []
@@ -144,7 +145,7 @@ class HTMLProcessor:
         resources: Dictionary mapping resource URLs to their binary content
     """
 
-    def __init__(self, html_content: str, resources: Dict[str, bytes]):
+    def __init__(self, html_content: str, resources: dict[str, bytes]):
         self.html_content = html_content
         self.resources = resources
 
