@@ -1,45 +1,41 @@
 """
-unmhtml - MHTML to HTML converter library
+unmhtml - make HTML documents self-contained
 
-A pure Python library for converting MHTML (MIME HTML) files to standalone HTML
-files with embedded CSS and resources, using only Python standard library modules.
-
-This library provides a simple interface for converting MHTML files (saved web pages)
-into standalone HTML files that can be viewed in any web browser without requiring
-the original resources to be available.
+A pure Python library for converting MHTML files — or any parsed HTML document
+with its resources — into standalone HTML with embedded CSS and resources,
+using only Python standard library modules.
 
 Basic Usage:
-    >>> from unmhtml import MHTMLConverter
-    >>> converter = MHTMLConverter()
-    >>>
-    >>> # Convert from file
-    >>> html_content = converter.convert_file('saved_page.mhtml')
+    >>> from unmhtml import load_mhtml, to_standalone_html
+    >>> document = load_mhtml(mhtml_content)
+    >>> html_content = to_standalone_html(document)
     >>> with open('output.html', 'w') as f:
     ...     f.write(html_content)
-    >>>
-    >>> # Convert from string content
-    >>> with open('page.mhtml', 'r') as f:
-    ...     mhtml_content = f.read()
-    >>> html_content = converter.convert(mhtml_content)
-    >>>
-    >>> # Secure conversion with JavaScript removal
-    >>> secure_converter = MHTMLConverter(remove_javascript=True)
-    >>> safe_html = secure_converter.convert_file('untrusted_page.mhtml')
 
-Advanced Usage:
-    >>> from unmhtml import MHTMLParser, HTMLProcessor
-    >>>
-    >>> # Manual parsing and processing
-    >>> parser = MHTMLParser(mhtml_content)
-    >>> html, resources = parser.parse()
-    >>>
-    >>> processor = HTMLProcessor(html, resources)
-    >>> standalone_html = processor.process()
+Working with HTML and resources directly (e.g. from a HAR archive):
+    >>> from unmhtml import Document, Resource, Security, to_standalone_html
+    >>> document = Document(
+    ...     html=rendered_html,
+    ...     resources={'https://example.com/logo.png': Resource(png_bytes, 'image/png')},
+    ...     base_url='https://example.com/page.html',
+    ... )
+    >>> html_content = to_standalone_html(document)
+
+Conversion is secure by default; pass a Security value to adjust what is
+removed:
+    >>> html_content = to_standalone_html(document, security=Security(remove_forms=False))
 """
 
-from .converter import MHTMLConverter
-from .parser import MHTMLParser
-from .processor import HTMLProcessor
+from .convert import to_standalone_html
+from .document import Document, Resource
+from .mhtml import load_mhtml
+from .security import Security
 
 __version__ = "0.3.0"
-__all__ = ["HTMLProcessor", "MHTMLConverter", "MHTMLParser"]
+__all__ = [
+    "Document",
+    "Resource",
+    "Security",
+    "load_mhtml",
+    "to_standalone_html",
+]
