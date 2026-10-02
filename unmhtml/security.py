@@ -404,6 +404,14 @@ def _build_cleaner(security: Security, base_url: str | None) -> nh3.Cleaner:
             return EXPRESSION_CSS.sub("", value)
         return value
 
+    # link_rel must stay None: nh3 forbids allowing rel on any tag while it
+    # is set, and the embedder needs link[rel=stylesheet|icon] to survive.
+    # The anchor hardening it would provide is pinned instead — pinned values
+    # apply after allowlist filtering, like the base href below.
+    pinned = {"a": {"rel": "noopener noreferrer"}}
+    if base_url is not None:
+        pinned["base"] = {"href": base_url}
+
     return nh3.Cleaner(
         tags=tags,
         # nh3's hidden Rust default is {'script', 'style'}, which panics when
@@ -411,14 +419,11 @@ def _build_cleaner(security: Security, base_url: str | None) -> nh3.Cleaner:
         clean_content_tags=clean_content_tags,
         attributes=attributes,
         attribute_filter=attribute_filter,
-        strip_comments=False,
         link_rel=None,
         url_relative="pass_through",
         generic_attribute_prefixes=generic_prefixes,
         url_schemes=url_schemes,
-        set_tag_attribute_values=(
-            {"base": {"href": base_url}} if base_url is not None else None
-        ),
+        set_tag_attribute_values=pinned,
     )
 
 

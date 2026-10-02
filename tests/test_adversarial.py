@@ -34,21 +34,31 @@ class TestSchemeSmuggling:
     """Disallowed schemes must not survive entity, case, or whitespace tricks."""
 
     def test_entity_encoded_javascript_in_href(self):
-        assert convert('<a href="&#106;avascript:alert(1)">x</a>') == "<a>x</a>"
+        assert convert('<a href="&#106;avascript:alert(1)">x</a>') == (
+            '<a rel="noopener noreferrer">x</a>'
+        )
 
     def test_tab_smuggled_via_entity(self):
         # Browsers strip tabs inside URLs; the filter must see through it.
-        assert convert('<a href="jav&#x09;ascript:alert(1)">x</a>') == "<a>x</a>"
+        assert convert('<a href="jav&#x09;ascript:alert(1)">x</a>') == (
+            '<a rel="noopener noreferrer">x</a>'
+        )
 
     def test_mixed_case_scheme(self):
-        assert convert('<a href="JaVaScRiPt:alert(1)">x</a>') == "<a>x</a>"
+        assert convert('<a href="JaVaScRiPt:alert(1)">x</a>') == (
+            '<a rel="noopener noreferrer">x</a>'
+        )
 
     def test_leading_spaces(self):
-        assert convert('<a href="  javascript:alert(1)">x</a>') == "<a>x</a>"
+        assert convert('<a href="  javascript:alert(1)">x</a>') == (
+            '<a rel="noopener noreferrer">x</a>'
+        )
 
     def test_other_script_schemes(self):
         for scheme in ("vbscript", "jscript", "livescript", "mocha"):
-            assert convert(f'<a href="{scheme}:alert(1)">x</a>') == "<a>x</a>", scheme
+            assert convert(f'<a href="{scheme}:alert(1)">x</a>') == (
+                '<a rel="noopener noreferrer">x</a>'
+            ), scheme
 
     def test_smuggled_scheme_in_img_src(self):
         assert convert('<img src="jav&#x09;ascript:alert(1)">') == "<img>"
@@ -58,7 +68,9 @@ class TestDataUriPolicy:
     """data: URIs are allowed only for passive media types."""
 
     def test_text_html_dropped_from_href(self):
-        assert convert('<a href="data:text/html,<b>hi</b>">x</a>') == "<a>x</a>"
+        assert convert('<a href="data:text/html,<b>hi</b>">x</a>') == (
+            '<a rel="noopener noreferrer">x</a>'
+        )
 
     def test_text_html_dropped_from_embedding_tags(self):
         assert (
@@ -90,13 +102,14 @@ class TestDataUriPolicy:
         )
 
     def test_javascript_media_type_dropped(self):
-        assert (
-            convert('<a href="data:application/javascript,alert(1)">x</a>')
-            == "<a>x</a>"
+        assert convert('<a href="data:application/javascript,alert(1)">x</a>') == (
+            '<a rel="noopener noreferrer">x</a>'
         )
 
     def test_bare_data_uri_with_empty_media_type_kept(self):
-        assert convert('<a href="data:,x">x</a>') == '<a href="data:,x">x</a>'
+        assert convert('<a href="data:,x">x</a>') == (
+            '<a href="data:,x" rel="noopener noreferrer">x</a>'
+        )
 
 
 class TestNoscriptRawTextHole:
@@ -156,7 +169,9 @@ class TestMalformedMarkup:
         assert convert("<div><p>unclosed") == "<div><p>unclosed</p></div>"
 
     def test_uppercase_tag_and_scheme(self):
-        assert convert('<A HREF="JAVASCRIPT:x">y</A>') == "<a>y</a>"
+        assert convert('<A HREF="JAVASCRIPT:x">y</A>') == (
+            '<a rel="noopener noreferrer">y</a>'
+        )
 
 
 class TestMetaDefusal:
@@ -227,7 +242,9 @@ class TestFormDefusal:
 class TestDuplicateAttributes:
     def test_first_href_wins_on_anchor(self):
         html = '<a href="https://good.example/a" href="javascript:alert(1)">x</a>'
-        assert convert(html) == '<a href="https://good.example/a">x</a>'
+        assert convert(html) == (
+            '<a href="https://good.example/a" rel="noopener noreferrer">x</a>'
+        )
 
     def test_first_src_wins_on_img(self):
         html = '<img src="a.png" src="javascript:alert(1)">'
@@ -270,17 +287,34 @@ class TestCssPostEmbed:
         assert "url(data:image/png;base64,iVBORw0KGgo=)" in result
 
 
-class TestCommentsPreserved:
-    """Comments survive verbatim — a documented accepted risk (inert in
-    modern browsers), asserted here so a behavior change gets noticed."""
+class TestCommentsDropped:
+    """Comments are removed, so payloads hidden inside them never reach
+    the output."""
 
-    def test_comment_with_script_inside_preserved_as_comment(self):
+    def test_comment_with_script_inside_dropped(self):
         html = "<p>a</p><!-- <script>alert(1)</script> --><p>b</p>"
-        assert convert(html) == html
+        assert convert(html) == "<p>a</p><p>b</p>"
 
-    def test_ie_conditional_comment_remains_comment_text(self):
+    def test_ie_conditional_comment_dropped(self):
         html = "<!--[if IE]><script>alert(1)</script><![endif]--><p>x</p>"
-        assert convert(html) == html
+        assert convert(html) == "<p>x</p>"
+
+
+class TestAnchorRelStamped:
+    """Every anchor carries rel="noopener noreferrer" — displayed output
+    gets clicked by users, and the host tab must not be tabnabbable."""
+
+    def test_plain_anchor_gets_rel(self):
+        assert convert('<a href="https://evil.com/x">l</a>') == (
+            '<a href="https://evil.com/x" rel="noopener noreferrer">l</a>'
+        )
+
+    def test_smuggled_rel_replaced_not_appended(self):
+        html = '<a href="https://evil.com/x" target="_blank" rel="opener">l</a>'
+        assert convert(html) == (
+            '<a href="https://evil.com/x" target="_blank"'
+            ' rel="noopener noreferrer">l</a>'
+        )
 
 
 class TestDocumentShape:

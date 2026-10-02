@@ -81,7 +81,8 @@ without `allow-scripts`, combined with a Content-Security-Policy.
   document as one self-contained HTML string
 
 The output is an HTML fragment: `html`/`head`/`body` wrappers are removed
-and the original doctype is re-emitted. HTML comments are preserved.
+and the original doctype is re-emitted. HTML comments are removed, and
+every anchor carries `rel="noopener noreferrer"`.
 
 ## Requirements
 

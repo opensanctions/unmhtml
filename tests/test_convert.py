@@ -318,7 +318,7 @@ class TestSecurityFlags:
         assert "<script" not in result
         assert "onload" not in result
         assert "javascript:" not in result
-        assert "<a>x</a>" in result
+        assert '<a rel="noopener noreferrer">x</a>' in result
         assert "<h1>Hi</h1>" in result
 
     def test_javascript_preserved_when_disabled(self):
@@ -395,12 +395,12 @@ class TestSecurityFlags:
 
 
 class TestStructurePreservation:
-    def test_comments_entities_and_doctype_preserved(self):
+    def test_entities_and_doctype_preserved(self):
         html = "<!DOCTYPE html>\n<!-- a comment -->\n<p>5 &lt; 6 &amp; 7 &gt; 4 &#65; &copy;</p>"
         result = to_standalone_html(Document(html=html))
 
         assert "<!DOCTYPE html>" in result
-        assert "<!-- a comment -->" in result
+        assert "<!-- a comment -->" not in result
         assert "5 &lt; 6 &amp; 7 &gt; 4 A ©" in result
 
     def test_malformed_html_does_not_crash(self):

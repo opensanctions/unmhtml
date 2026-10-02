@@ -41,7 +41,7 @@ class TestJavascriptRemovedByDefault:
         html = '<a href="javascript:void(0)">link</a><img src="javascript:alert()">'
         result = to_standalone_html(Document(html=html))
 
-        assert result == "<a>link</a><img>"
+        assert result == '<a rel="noopener noreferrer">link</a><img>'
         assert "javascript:" not in result
 
     def test_noscript_content_removed(self):
