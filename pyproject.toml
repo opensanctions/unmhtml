@@ -1,7 +1,7 @@
 [project]
 name = "unmhtml"
 version = "0.3.0"
-description = "MHTML to HTML converter library using Python stdlib"
+description = "MHTML to HTML converter library with nh3-based sanitization"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
