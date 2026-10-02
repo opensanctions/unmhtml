@@ -6,7 +6,7 @@ This document defines the requirements and design for a Python library that conv
 
 - Convert MHTML files to standalone HTML files with embedded CSS and resources
 - Preserve original rendered content structure for accurate display
-- Pure Python implementation using only standard library modules
+- Standard-library Python implementation, with security-critical HTML sanitization delegated to the maintained nh3 sanitizer
 - Support integration with web applications displaying archived content
 - Provide comprehensive security sanitization for untrusted content
 
@@ -14,8 +14,8 @@ This document defines the requirements and design for a Python library that conv
 
 - **Language:** Python 3.8+
 - **Package Manager:** uv toolchain
-- **Dependencies:** Python standard library only (`email`, `base64`, `mimetypes`, `urllib.parse`, `html`, `re`)
-- **Zero External Dependencies** for maximum portability
+- **Dependencies:** Python standard library (`email`, `base64`, `mimetypes`, `urllib.parse`, `html`, `re`) plus `nh3` (Python bindings to Rust ammonia, itself html5ever-based)
+- **Rationale:** a maintained ammonia/html5ever sanitizer beats owning security-critical HTML parsing. `nh3` has zero transitive runtime dependencies and ships wheels for all major platforms — a conscious trade replacing the former zero-dependency rule
 
 ## **Core Functionality**
 
@@ -32,12 +32,16 @@ This document defines the requirements and design for a Python library that conv
 - Handle URL resolution and path mapping
 
 ### **Security Sanitization**
-Optional security features for safe display of untrusted content:
+Sanitization for safe display of untrusted content — enabled by default, configurable per feature. Built on nh3 in two passes: a structural nh3 pass before resource embedding, then a regex pass over the embedded CSS after.
 
-- **JavaScript Removal:** Script tags, event handlers, javascript: URLs
-- **CSS Sanitization:** Remove url(), @import, expression(), behavior: properties
-- **Form Removal:** Remove form elements that could submit data
-- **Meta Tag Sanitization:** Remove meta refresh, set-cookie, dns-prefetch tags
+- **Architecture:** pre-embed structural nh3 pass → resource embedding → post-embed CSS regex pass stripping `@import`, non-`data:` `url()`, `expression()`, `behavior:`
+- **JavaScript Removal:** `<script>` and `<noscript>` dropped with their content; `on*` event handlers gone; `javascript:` and unknown URL schemes dropped — the whole attribute is dropped, never rewritten
+- **Form Defusal:** form elements (`<form>`, `<input>`, `<button>`, ...) and their content survive; submission attributes (`action`, `method`, `formaction`, `enctype`, `target`, ...) are stripped
+- **Meta Tag Defusal:** `http-equiv` refresh/set-cookie and `name` dns-prefetch attributes stripped; the `<meta>` element survives as an inert stub
+- **data: URI Policy:** media-type filtered to passive media; `image/svg+xml` denied on `iframe`/`embed`/`object`
+- **URL Scheme Allowlist:** http/https/mailto/tel/ftp/data
+- **Hostile `<base href>`:** rewritten to the document's base URL when known, else dropped
+- **Comment Preservation:** comments kept verbatim — accepted risk, inert in modern browsers
 
 ## **API Design**
 
@@ -48,10 +52,10 @@ Optional security features for safe display of untrusted content:
 - Boolean flags for each security feature (all enabled by default)
 
 ### **Security Options**
-- `remove_javascript`: Remove all JavaScript content (enabled by default)
-- `sanitize_css`: Remove dangerous CSS properties (enabled by default)
-- `remove_forms`: Remove form elements (enabled by default)
-- `remove_meta_redirects`: Remove dangerous meta tags (enabled by default)
+- `remove_javascript`: Remove scripts with their content, `on*` event handlers, and `javascript:`/unknown-scheme URLs — the whole attribute is dropped (enabled by default)
+- `disable_forms`: Defuse form elements — they and their content survive, submission attributes are stripped (enabled by default)
+- `remove_meta_redirects`: Defuse dangerous meta tags — refresh/set-cookie/dns-prefetch attributes stripped, inert stub remains (enabled by default)
+- `sanitize_css`: Post-embed pass removing `@import`, non-`data:` `url()`, `expression()`, `behavior:` (enabled by default)
 
 ## **Key Features**
 
@@ -76,8 +80,8 @@ Optional security features for safe display of untrusted content:
 - **Functionality:** Successful conversion of MHTML to standalone HTML
 - **Performance:** Efficient processing of typical web pages
 - **Reliability:** Graceful handling of malformed MHTML
-- **Security:** Effective sanitization for safe display of untrusted content
+- **Security:** Effective sanitization for safe display of untrusted content — hostile-input handling is defense in depth for a sandboxed display context
 - **Simplicity:** Clean, minimal API with clear documentation
-- **Portability:** Zero external dependencies, pure Python stdlib implementation
+- **Portability:** Standard-library implementation with `nh3` as the single dependency — zero transitive runtime dependencies, wheels for all major platforms
 
 This specification provides the foundation for building a lightweight, secure MHTML to HTML converter library.

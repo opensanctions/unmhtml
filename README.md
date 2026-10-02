@@ -10,6 +10,10 @@ Convert MHTML files — or any parsed HTML document with its resources — to st
 pip install unmhtml
 ```
 
+The only runtime dependency is [nh3](https://pypi.org/project/nh3/) — Python
+bindings to the Rust [ammonia](https://github.com/rust-ammonia/ammonia)
+sanitizer (html5ever-based), which powers the structural sanitization pass.
+
 ## Usage
 
 Convert an MHTML archive (secure by default):
@@ -83,6 +87,20 @@ html = to_standalone_html(
 )
 ```
 
+### Threat model
+
+The contract is reduction, not isolation: sanitization strips active
+content, and the embedding step neutralizes every unresolvable reference, so
+the output makes no network requests. This is defense in depth, **not** a
+complete sandbox — untrusted documents must still be displayed in a sandboxed
+context of your own, such as a sandboxed iframe without `allow-scripts` or
+`allow-same-origin`, combined with a Content-Security-Policy.
+
+Documented behavior: HTML comments are preserved verbatim (an accepted risk —
+they are inert in modern browsers), and the output is an HTML fragment —
+`html`/`head`/`body` wrappers are removed and the original doctype is
+re-emitted verbatim.
+
 ## API
 
 - `load_mhtml(data: str | bytes) -> Document` — parse MHTML content; the first `text/html` part becomes the document, other located parts become resources
@@ -93,6 +111,8 @@ html = to_standalone_html(
 ## Requirements
 
 - Python 3.8+
+- [nh3](https://pypi.org/project/nh3/) — the only dependency: zero transitive
+  runtime dependencies, wheels for all major platforms
 
 ## License
 
