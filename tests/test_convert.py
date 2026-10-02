@@ -14,7 +14,7 @@ BASE_URL = "https://example.com/page.html"
 UNSAFE = Security(
     remove_javascript=False,
     sanitize_css=False,
-    remove_forms=False,
+    disable_forms=False,
     remove_meta_redirects=False,
 )
 
@@ -318,6 +318,7 @@ class TestSecurityFlags:
         assert "<script" not in result
         assert "onload" not in result
         assert "javascript:" not in result
+        assert "<a>x</a>" in result
         assert "<h1>Hi</h1>" in result
 
     def test_javascript_preserved_when_disabled(self):
@@ -337,15 +338,16 @@ class TestSecurityFlags:
 
         assert f'src="{data_uri("text/javascript", js)}"' in result
 
-    def test_forms_removed_by_default(self):
+    def test_forms_defused_by_default(self):
         html = "<html><body><h1>Hi</h1><form action='/x'><input name='q'></form></body></html>"
         result = to_standalone_html(Document(html=html))
 
-        assert "<form" not in result
-        assert "<input" not in result
+        assert "<form>" in result
+        assert '<input name="q">' in result
+        assert "action" not in result
         assert "<h1>Hi</h1>" in result
 
-    def test_forms_preserved_when_disabled(self):
+    def test_forms_functional_when_disabled(self):
         html = "<html><body><form action='/x'><input name='q'></form></body></html>"
         result = to_standalone_html(Document(html=html), security=UNSAFE)
 
@@ -359,7 +361,8 @@ class TestSecurityFlags:
         )
         result = to_standalone_html(Document(html=html))
 
-        assert "<meta" not in result
+        assert "http-equiv" not in result
+        assert '<meta content="0;url=http://evil.com">' in result
         assert "Hi" in result
 
     def test_meta_redirects_preserved_when_disabled(self):
@@ -394,18 +397,18 @@ class TestSecurityFlags:
 class TestStructurePreservation:
     def test_comments_entities_and_doctype_preserved(self):
         html = (
-            "<!DOCTYPE html>\n<!-- a comment -->\n<p>5 &lt; 6 &amp; 7 &gt; 4 &#65;</p>"
+            "<!DOCTYPE html>\n<!-- a comment -->\n<p>5 &lt; 6 &amp; 7 &gt; 4 &#65; &copy;</p>"
         )
         result = to_standalone_html(Document(html=html))
 
         assert "<!DOCTYPE html>" in result
         assert "<!-- a comment -->" in result
-        assert "5 &lt; 6 &amp; 7 &gt; 4 &#65;" in result
+        assert "5 &lt; 6 &amp; 7 &gt; 4 A ©" in result
 
     def test_malformed_html_does_not_crash(self):
         result = to_standalone_html(Document(html="<div><p>unclosed"))
 
-        assert "<p>unclosed" in result
+        assert "<div><p>unclosed</p></div>" in result
 
     def test_multiple_stylesheets_inlined_in_order(self, sample_resources):
         resources = dict(sample_resources)

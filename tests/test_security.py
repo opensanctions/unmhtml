@@ -1,96 +1,225 @@
-"""Tests for the security sanitization functions."""
+"""Tests for the security sanitization layer, through the public API."""
 
 import dataclasses
 
 import pytest
 
-from unmhtml.security import (
-    Security,
-    remove_forms,
-    remove_javascript_content,
-    remove_meta_redirects,
-    sanitize_css,
-)
+from unmhtml import Document, Security, to_standalone_html
+from unmhtml.security import sanitize_css
 
 
 class TestSecurityDefaults:
-    def test_all_removals_enabled_by_default(self):
+    def test_all_neutralizations_enabled_by_default(self):
         security = Security()
 
         assert security.remove_javascript
-        assert security.sanitize_css
-        assert security.remove_forms
+        assert security.disable_forms
         assert security.remove_meta_redirects
+        assert security.sanitize_css
 
     def test_is_frozen(self):
         with pytest.raises(dataclasses.FrozenInstanceError):
             Security().remove_javascript = False
 
 
-class TestRemoveJavascriptContent:
-    def test_script_removal(self):
-        html = '<html><body><script type="text/javascript">alert("xss")</script><p>content</p></body></html>'
-        cleaned = remove_javascript_content(html)
+class TestJavascriptRemovedByDefault:
+    def test_script_tags_and_content_removed(self):
+        html = '<div><script type="text/javascript">alert("xss")</script><p>content</p></div>'
+        result = to_standalone_html(Document(html=html))
 
-        assert "<script" not in cleaned
-        assert "alert" not in cleaned
-        assert "<p>content</p>" in cleaned
+        assert "<script" not in result
+        assert "alert" not in result
+        assert "<p>content</p>" in result
 
-    def test_event_handlers(self):
+    def test_event_handlers_removed(self):
         html = '<div onclick="bad()" onmouseover="bad()">text</div>'
-        cleaned = remove_javascript_content(html)
+        result = to_standalone_html(Document(html=html))
 
-        assert "onclick" not in cleaned
-        assert "onmouseover" not in cleaned
-        assert "<div>text</div>" in cleaned
+        assert result == "<div>text</div>"
 
-    def test_javascript_urls(self):
+    def test_javascript_urls_lose_the_attribute(self):
         html = '<a href="javascript:void(0)">link</a><img src="javascript:alert()">'
-        cleaned = remove_javascript_content(html)
+        result = to_standalone_html(Document(html=html))
 
-        assert 'href="#"' in cleaned
-        assert 'src="#"' in cleaned
-        assert "javascript:" not in cleaned
+        assert result == "<a>link</a><img>"
+        assert "javascript:" not in result
+
+    def test_noscript_content_removed(self):
+        html = "<div><noscript><img src='https://evil.com/track.png'></noscript>x</div>"
+        result = to_standalone_html(Document(html=html))
+
+        assert "<noscript" not in result
+        assert "evil.com" not in result
+        assert "<div>x</div>" in result
+
+    def test_expression_css_stripped_from_inline_styles(self):
+        html = "<div style=\"width: expression(document.body.scrollWidth)\">t</div>"
+        result = to_standalone_html(Document(html=html))
+
+        assert "expression" not in result
+        assert "<div style=\"width: \">t</div>" in result
 
     def test_complex_document(self):
         html = """<!DOCTYPE html>
 <html>
 <head>
     <script src="https://evil.com/track.js"></script>
-    <noscript><img src="https://evil.com/track.png"></noscript>
 </head>
 <body onload="track()">
     <h1>Title</h1>
     <a href="https://good.com">Good link</a>
-    <img src="image.png" alt="test">
-    <a href="page.html">Relative link</a>
 </body>
 </html>"""
-        cleaned = remove_javascript_content(html)
+        result = to_standalone_html(Document(html=html))
 
-        assert "<script" not in cleaned
-        assert "<noscript" not in cleaned
-        assert "onload" not in cleaned
-        assert 'src="image.png"' in cleaned
-        assert 'href="page.html"' in cleaned
+        assert "<script" not in result
+        assert "onload" not in result
+        assert "<h1>Title</h1>" in result
+        assert 'href="https://good.com"' in result
+        assert "<!DOCTYPE html>" in result
 
-    @pytest.mark.parametrize(
-        "input_html,should_contain",
-        [
-            ('<script>alert("xss")</script><p>content</p>', "<p>content</p>"),
-            ('<div onclick="bad()">text</div>', "<div>text</div>"),
-            ('<a href="javascript:void(0)">link</a>', '<a href="#">link</a>'),
-            ('<img src="image.png" onload="track()" alt="test">', 'src="image.png"'),
-        ],
-    )
-    def test_integration(self, input_html, should_contain):
-        result = remove_javascript_content(input_html)
-        assert should_contain in result
 
-        # Should not contain dangerous content
-        assert "script>" not in result
-        assert "javascript:" not in result
-        assert "onclick" not in result
+class TestJavascriptPreservedWhenDisabled:
+    def test_script_content_preserved(self):
+        html = "<div><script>if (a &lt; b) { alert('hi'); }</script></div>"
+        result = to_standalone_html(
+            Document(html=html), security=Security(remove_javascript=False)
+        )
+
+        assert "<script>if (a &lt; b) { alert('hi'); }</script>" in result
+
+    def test_event_handlers_preserved(self):
+        html = '<div onload="track()" data-x="1" aria-label="l">text</div>'
+        result = to_standalone_html(
+            Document(html=html), security=Security(remove_javascript=False)
+        )
+
+        assert 'onload="track()"' in result
+        assert 'data-x="1"' in result
+        assert 'aria-label="l"' in result
+
+    def test_javascript_urls_preserved(self):
+        html = '<a href="javascript:void(0)">link</a>'
+        result = to_standalone_html(
+            Document(html=html), security=Security(remove_javascript=False)
+        )
+
+        assert 'href="javascript:void(0)"' in result
+
+
+class TestFormsDefusedByDefault:
+    def test_submission_attributes_stripped(self):
+        html = (
+            "<form action='/submit' method='post' accept-charset='utf-8'>"
+            "<input type='text' name='q' required>"
+            "<button type='submit' formaction='/go'>Go</button>"
+            "</form>"
+        )
+        result = to_standalone_html(Document(html=html))
+
+        assert "<form>" in result
+        assert "<input" in result
+        assert "<button" in result
+        assert "action" not in result
+        assert "method" not in result
+        assert "accept-charset" not in result
+        assert "formaction" not in result
+        assert 'name="q"' in result
+        assert "Go" in result
+
+    def test_controls_survive(self):
+        html = (
+            "<label for='q'>Q</label>"
+            "<select name='s'><option value='1' selected>One</option></select>"
+            "<textarea name='t' rows='3'>text</textarea>"
+        )
+        result = to_standalone_html(Document(html=html))
+
+        assert "<label" in result
+        assert "<select" in result
+        assert "<option" in result
+        assert "<textarea" in result
+        assert "One" in result
+        assert "text" in result
+
+    def test_forms_functional_when_enabled(self):
+        html = (
+            "<form action='/submit' method='post' novalidate>"
+            "<input type='text' name='q' formaction='/go'>"
+            "<button type='submit' formmethod='get'>Go</button>"
+            "</form>"
+        )
+        result = to_standalone_html(
+            Document(html=html), security=Security(disable_forms=False)
+        )
+
+        assert '<form action="/submit" method="post" novalidate="">' in result
+        assert 'formaction="/go"' in result
+        assert 'formmethod="get"' in result
+
+
+class TestMetaRedirectsRemovedByDefault:
+    def test_refresh_defused_to_inert_stub(self):
+        html = '<meta http-equiv="refresh" content="0;url=http://evil.com">'
+        result = to_standalone_html(Document(html=html))
+
+        assert "<meta" in result
+        assert "http-equiv" not in result
+        assert '<meta content="0;url=http://evil.com">' in result
+
+    def test_set_cookie_defused(self):
+        html = '<meta http-equiv="set-cookie" content="session=abc123">'
+        result = to_standalone_html(Document(html=html))
+
+        assert "http-equiv" not in result
+        assert "<meta" in result
+
+    def test_dns_prefetch_defused(self):
+        html = '<meta name="dns-prefetch" content="evil.com">'
+        result = to_standalone_html(Document(html=html))
+
+        assert "dns-prefetch" not in result
+        assert "<meta" in result
+
+    def test_harmless_meta_tags_survive(self):
+        html = (
+            '<meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width">'
+            "<p>content</p>"
+        )
+        result = to_standalone_html(Document(html=html))
+
+        assert '<meta charset="utf-8">' in result
+        assert '<meta name="viewport" content="width=device-width">' in result
+        assert "<p>content</p>" in result
+
+    def test_meta_untouched_when_disabled(self):
+        html = '<meta http-equiv="refresh" content="5">'
+        result = to_standalone_html(
+            Document(html=html), security=Security(remove_meta_redirects=False)
+        )
+
+        assert '<meta http-equiv="refresh" content="5">' in result
+
+
+class TestUnsafePassthrough:
+    def test_no_cleaning_when_all_flags_disabled(self):
+        html = (
+            '<body onload="x()"><script>alert(\'hi\')</script>'
+            '<form action="/x"><input name="q"></form>'
+            '<meta http-equiv="refresh" content="0;url=http://evil.com">'
+            "</body>"
+        )
+        result = to_standalone_html(
+            Document(html=html),
+            security=Security(
+                remove_javascript=False,
+                disable_forms=False,
+                remove_meta_redirects=False,
+            ),
+        )
+
+        assert result == html
 
 
 class TestSanitizeCss:
@@ -168,82 +297,3 @@ class TestSanitizeCss:
         assert "evil.com" not in cleaned
         assert "color: red" in cleaned
         assert "data:image/png;base64,good" in cleaned
-
-
-class TestRemoveForms:
-    def test_complete_removal(self):
-        html = """<html>
-<body>
-    <h1>Page Title</h1>
-    <form action="/submit" method="post">
-        <input type="text" name="username">
-        <input type="password" name="password">
-        <textarea name="comments">Default</textarea>
-        <select name="choice"><option value="1">One</option></select>
-        <button type="submit">Submit</button>
-        <label>Username</label>
-    </form>
-    <p>Footer content</p>
-</body>
-</html>"""
-        cleaned = remove_forms(html)
-
-        assert "<form" not in cleaned
-        assert "<input" not in cleaned
-        assert "<textarea" not in cleaned
-        assert "<select" not in cleaned
-        assert "<button" not in cleaned
-        assert "<label" not in cleaned
-        assert "<h1>Page Title</h1>" in cleaned
-        assert "<p>Footer content</p>" in cleaned
-
-    def test_fieldset_and_datalist(self):
-        html = """<div>
-    <fieldset><legend>Group</legend><input name="a"></fieldset>
-    <datalist id="list"><option value="x"></datalist>
-    <p>Content</p>
-</div>"""
-        cleaned = remove_forms(html)
-
-        assert "<fieldset" not in cleaned
-        assert "<legend" not in cleaned
-        assert "<datalist" not in cleaned
-        assert "<p>Content</p>" in cleaned
-
-
-class TestRemoveMetaRedirects:
-    def test_refresh(self):
-        html = '<html><head><meta http-equiv="refresh" content="0;url=http://evil.com"></head><body>content</body></html>'
-        cleaned = remove_meta_redirects(html)
-
-        assert "<meta" not in cleaned
-        assert "evil.com" not in cleaned
-        assert "content" in cleaned
-
-    def test_set_cookie(self):
-        html = '<html><head><meta http-equiv="set-cookie" content="session=abc123"></head><body>content</body></html>'
-        cleaned = remove_meta_redirects(html)
-
-        assert "<meta" not in cleaned
-        assert "session" not in cleaned
-
-    def test_dns_prefetch(self):
-        html = """<html>
-<head>
-    <meta name="dns-prefetch" content="evil.com">
-    <meta name="viewport" content="width=device-width">
-</head>
-<body>content</body>
-</html>"""
-        cleaned = remove_meta_redirects(html)
-
-        assert 'name="dns-prefetch"' not in cleaned
-        assert "evil.com" not in cleaned
-        assert 'name="viewport"' in cleaned
-
-    def test_regular_meta_tags_preserved(self):
-        html = '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body>content</body></html>'
-        cleaned = remove_meta_redirects(html)
-
-        assert '<meta charset="utf-8">' in cleaned
-        assert 'name="viewport"' in cleaned

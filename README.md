@@ -51,34 +51,34 @@ empty CSS `url()` — so the result never makes network requests.
 
 ## How conversion works
 
-Content removals run before embedding; CSS sanitization runs after. This
-means every reference the document can resolve is embedded as a data URI,
-and only genuinely external CSS survives to be stripped. Malformed MHTML
-raises `ValueError` instead of degrading silently.
+A structural sanitization pass runs before embedding; CSS sanitization runs
+after. This means every reference the document can resolve is embedded as a
+data URI, and only genuinely external CSS survives to be stripped. Malformed
+MHTML raises `ValueError` instead of degrading silently.
 
 ## Security
 
-Conversion is **secure by default** — all removals are enabled, making the
-result safe to display as untrusted content:
+Conversion is **secure by default** — all neutralizations are enabled, making
+the result safe to display as untrusted content:
 
-- **`remove_javascript=True`** — Removes `<script>` tags, event handlers (onclick, onload, etc.), and converts `javascript:` URLs to safe `#` anchors
+- **`remove_javascript=True`** — Removes `<script>` tags and their content, event handlers (onclick, onload, etc.), and `javascript:` URLs (the whole attribute is dropped)
+- **`disable_forms=True`** — Defuses form elements: `<form>`, `<input>`, `<button>` and friends survive, but submission attributes (`action`, `method`, `formaction`, ...) are stripped
+- **`remove_meta_redirects=True`** — Defuses dangerous meta tags: `http-equiv` refresh/set-cookie and `name` dns-prefetch attributes are stripped, leaving an inert stub
 - **`sanitize_css=True`** — Removes CSS that can still make requests after embedding: `@import` statements, `url()` references that are not data URIs (fragment references like `url(#gradient)` are preserved), `expression()`, and `behavior:`
-- **`remove_forms=True`** — Removes form elements (`<form>`, `<input>`, `<textarea>`, `<select>`) that could submit data externally
-- **`remove_meta_redirects=True`** — Removes dangerous meta tags (refresh redirects, set-cookie, dns-prefetch)
 
 Adjust the policy with a `Security` value:
 
 ```python
 from unmhtml import Security, to_standalone_html
 
-# Preserve original content, including scripts and forms
+# Preserve original content, including scripts and functional forms
 html = to_standalone_html(
     document,
     security=Security(
         remove_javascript=False,
-        sanitize_css=False,
-        remove_forms=False,
+        disable_forms=False,
         remove_meta_redirects=False,
+        sanitize_css=False,
     ),
 )
 ```

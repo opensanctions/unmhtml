@@ -1,9 +1,9 @@
 """
 unmhtml - make HTML documents self-contained
 
-A pure Python library for converting MHTML files — or any parsed HTML document
+A library for converting MHTML files — or any parsed HTML document
 with its resources — into standalone HTML with embedded CSS and resources,
-using only Python standard library modules.
+sanitized for safe display of untrusted content.
 
 Basic Usage:
     >>> from unmhtml import load_mhtml, to_standalone_html
@@ -23,7 +23,7 @@ Working with HTML and resources directly (e.g. from a HAR archive):
 
 Conversion is secure by default; pass a Security value to adjust what is
 removed:
-    >>> html_content = to_standalone_html(document, security=Security(remove_forms=False))
+    >>> html_content = to_standalone_html(document, security=Security(disable_forms=False))
 """
 
 from .convert import to_standalone_html
