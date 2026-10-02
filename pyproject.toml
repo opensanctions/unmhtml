@@ -4,7 +4,9 @@ version = "0.3.0"
 description = "MHTML to HTML converter library using Python stdlib"
 readme = "README.md"
 requires-python = ">=3.8"
-dependencies = []
+dependencies = [
+    "nh3>=0.3.7",
+]
 authors = [
     {name = "Johan Schuijt"}
 ]
