@@ -14,7 +14,6 @@ class TestSecurityDefaults:
 
         assert security.remove_javascript
         assert security.disable_forms
-        assert security.remove_meta_redirects
         assert security.sanitize_css
 
     def test_is_frozen(self):
@@ -41,7 +40,7 @@ class TestJavascriptRemovedByDefault:
         html = '<a href="javascript:void(0)">link</a><img src="javascript:alert()">'
         result = to_standalone_html(Document(html=html))
 
-        assert result == '<a rel="noopener noreferrer">link</a><img>'
+        assert result == '<a rel="noopener noreferrer">link</a><img src="">'
         assert "javascript:" not in result
 
     def test_noscript_content_removed(self):
@@ -158,30 +157,29 @@ class TestFormsDefusedByDefault:
         assert 'formmethod="get"' in result
 
 
-class TestMetaRedirectsRemovedByDefault:
-    def test_refresh_defused_to_inert_stub(self):
+class TestHeadFurnitureRemovedByDefault:
+    """title, meta, link and base are not in the cleaner's tag set: nothing
+    from the head survives to fetch, redirect, or leak at display time."""
+
+    def test_meta_refresh_removed(self):
         html = '<meta http-equiv="refresh" content="0;url=http://evil.com">'
         result = to_standalone_html(Document(html=html))
 
-        assert "<meta" in result
-        assert "http-equiv" not in result
-        assert '<meta content="0;url=http://evil.com">' in result
+        assert result == ""
 
-    def test_set_cookie_defused(self):
+    def test_meta_set_cookie_removed(self):
         html = '<meta http-equiv="set-cookie" content="session=abc123">'
         result = to_standalone_html(Document(html=html))
 
-        assert "http-equiv" not in result
-        assert "<meta" in result
+        assert result == ""
 
-    def test_dns_prefetch_defused(self):
+    def test_dns_prefetch_meta_removed(self):
         html = '<meta name="dns-prefetch" content="evil.com">'
         result = to_standalone_html(Document(html=html))
 
-        assert "dns-prefetch" not in result
-        assert "<meta" in result
+        assert result == ""
 
-    def test_harmless_meta_tags_survive(self):
+    def test_viewport_and_charset_removed(self):
         html = (
             '<meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width">'
@@ -189,17 +187,13 @@ class TestMetaRedirectsRemovedByDefault:
         )
         result = to_standalone_html(Document(html=html))
 
-        assert '<meta charset="utf-8">' in result
-        assert '<meta name="viewport" content="width=device-width">' in result
-        assert "<p>content</p>" in result
+        assert result == "<p>content</p>"
 
-    def test_meta_untouched_when_disabled(self):
-        html = '<meta http-equiv="refresh" content="5">'
-        result = to_standalone_html(
-            Document(html=html), security=Security(remove_meta_redirects=False)
-        )
+    def test_title_removed_without_text_leak(self):
+        html = "<html><head><title>T</title></head><body><p>x</p></body></html>"
+        result = to_standalone_html(Document(html=html))
 
-        assert '<meta http-equiv="refresh" content="5">' in result
+        assert result == "<p>x</p>"
 
 
 class TestUnsafePassthrough:
@@ -215,7 +209,6 @@ class TestUnsafePassthrough:
             security=Security(
                 remove_javascript=False,
                 disable_forms=False,
-                remove_meta_redirects=False,
             ),
         )
 

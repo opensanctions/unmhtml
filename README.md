@@ -50,10 +50,10 @@ requests.
 ## Security
 
 Conversion is secure by default: scripts, event handlers and dangerous URLs
-are removed, forms and meta redirects are defused, and CSS that could still
-fetch or execute is stripped. Each neutralization has its own flag on
-`Security` (`remove_javascript`, `disable_forms`, `remove_meta_redirects`,
-`sanitize_css`), all defaulting to on:
+are removed, forms are defused, head furniture that could fetch or redirect
+(`link`, `meta`, `base`) is dropped, and CSS that could still fetch or execute
+is stripped. Each neutralization has its own flag on `Security`
+(`remove_javascript`, `disable_forms`, `sanitize_css`), all defaulting to on:
 
 ```python
 from unmhtml import Security, to_standalone_html
@@ -80,9 +80,11 @@ without `allow-scripts`, combined with a Content-Security-Policy.
 - `to_standalone_html(document, *, security=Security()) -> str` — the
   document as one self-contained HTML string
 
-The output is an HTML fragment: `html`/`head`/`body` wrappers are removed
-and the original doctype is re-emitted. HTML comments are removed, and
-every anchor carries `rel="noopener noreferrer"`.
+The output is an HTML fragment: `html`/`head`/`body` wrappers and head
+furniture (`title`, `meta`, `link`, `base`) are removed and the original
+doctype is re-emitted. HTML comments are removed, relative anchor targets
+are made absolute against `base_url`, and every anchor carries
+`rel="noopener noreferrer"`.
 
 ## Requirements
 

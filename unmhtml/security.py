@@ -32,23 +32,19 @@ INLINE_STYLE_ATTR = re.compile(r'(style\s*=\s*["\'])([^"\']*)["\']', re.IGNORECA
 
 _DOCTYPE = re.compile(r"^\s*<!DOCTYPE[^>]*>", re.IGNORECASE)
 
-# Characters browsers strip from URLs: C0 controls and space at either end,
-# and tab/newline/carriage-return anywhere.
-_URL_EDGE_CHARS = "".join(chr(c) for c in range(0x21))
-_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
+# Characters browsers strip from URLs: tab/newline/carriage-return anywhere.
+_URL_CONTROLS = re.compile(r"[\t\n\r]")
+# URL-bearing attributes the data: URI policy must see. nh3 scheme-checks
+# href and src itself; it never inspects srcset or the SVG xlink:href.
 _URL_ATTRIBUTES = frozenset(
-    {"href", "src", "data", "poster", "background", "cite", "longdesc"}
+    {"href", "xlink:href", "src", "data", "poster", "background", "action", "srcset"}
 )
-_URL_SCHEMES = frozenset({"http", "https", "mailto", "tel", "ftp", "data"})
 # data: URIs that may reference a document rather than passive media
 _SVG_HOST_TAGS = frozenset({"iframe", "embed", "object"})
 
 # Tags nh3 does not allow by default that archived pages need
 _CONTENT_TAGS = frozenset(
     {
-        "title",
-        "meta",
-        "link",
         "style",
         "picture",
         "source",
@@ -330,7 +326,6 @@ class Security:
 
     remove_javascript: bool = True
     disable_forms: bool = True
-    remove_meta_redirects: bool = True
     sanitize_css: bool = True
 
 
@@ -358,19 +353,23 @@ def sanitize_css(html: str) -> str:
     return INLINE_STYLE_ATTR.sub(sanitize_style_content, html)
 
 
-def _build_cleaner(security: Security, base_url: str | None) -> nh3.Cleaner:
-    """Build the pre-embed structural cleaner for *security*."""
+def _build_cleaner(security: Security) -> nh3.Cleaner:
+    """Build the post-embed cleaner: nh3's defaults plus the tag and
+    attribute sets archived pages need.
+
+    What the defaults buy — head furniture cleaned away, anchors stamped
+    with rel="noopener noreferrer", href/src scheme-checked — is invisible
+    here precisely because it is not configured.
+    """
     tags = nh3.ALLOWED_TAGS | _CONTENT_TAGS | _SVG_TAGS | _MATHML_TAGS
-    if base_url is not None:
-        tags = tags | {"base"}
-    clean_content_tags = {"noscript"}
+    clean_content_tags = {"noscript", "title"}
     if security.remove_javascript:
         clean_content_tags.add("script")
     else:
         tags = tags | {"script"}
 
-    attributes = _build_attributes(security, base_url)
-    url_schemes = set(_URL_SCHEMES)
+    attributes = _build_attributes(security)
+    url_schemes = nh3.ALLOWED_URL_SCHEMES | {"data"}
     generic_prefixes = {"data-", "aria-"}
     if not security.remove_javascript:
         url_schemes.add("javascript")
@@ -386,31 +385,12 @@ def _build_cleaner(security: Security, base_url: str | None) -> nh3.Cleaner:
         }
 
     def attribute_filter(tag: str, attr: str, value: str) -> str | None:
-        if security.remove_meta_redirects and tag == "meta":
-            lowered = value.strip().lower()
-            if attr == "http-equiv" and lowered in {"refresh", "set-cookie"}:
-                return None
-            if attr == "name" and lowered == "dns-prefetch":
-                return None
+        # nh3's scheme filter has no data: URI media-type policy.
         if attr in _URL_ATTRIBUTES:
-            if not _url_allowed(tag, value, url_schemes):
+            url = _URL_CONTROLS.sub("", value).strip()
+            if url[:5].lower() == "data:" and not _data_uri_allowed(tag, url):
                 return None
-        elif attr == "srcset":
-            if not all(
-                _url_allowed(tag, url, url_schemes) for url in _srcset_urls(value)
-            ):
-                return None
-        elif attr == "style" and security.remove_javascript:
-            return EXPRESSION_CSS.sub("", value)
         return value
-
-    # link_rel must stay None: nh3 forbids allowing rel on any tag while it
-    # is set, and the embedder needs link[rel=stylesheet|icon] to survive.
-    # The anchor hardening it would provide is pinned instead — pinned values
-    # apply after allowlist filtering, like the base href below.
-    pinned = {"a": {"rel": "noopener noreferrer"}}
-    if base_url is not None:
-        pinned["base"] = {"href": base_url}
 
     return nh3.Cleaner(
         tags=tags,
@@ -419,15 +399,12 @@ def _build_cleaner(security: Security, base_url: str | None) -> nh3.Cleaner:
         clean_content_tags=clean_content_tags,
         attributes=attributes,
         attribute_filter=attribute_filter,
-        link_rel=None,
-        url_relative="pass_through",
-        generic_attribute_prefixes=generic_prefixes,
         url_schemes=url_schemes,
-        set_tag_attribute_values=pinned,
+        generic_attribute_prefixes=generic_prefixes,
     )
 
 
-def _build_attributes(security: Security, base_url: str | None) -> dict[str, set[str]]:
+def _build_attributes(security: Security) -> dict[str, set[str]]:
     attributes = deepcopy(nh3.ALLOWED_ATTRIBUTES)
     attributes["*"] = {
         "style",
@@ -442,10 +419,7 @@ def _build_attributes(security: Security, base_url: str | None) -> dict[str, set
     }
     attributes["img"] |= {"srcset", "sizes", "loading", "decoding"}
     attributes["a"] |= {"target", "name"}
-    attributes["link"] = {"rel", "href", "type", "media"}
-    attributes["meta"] = {"charset", "name", "content", "http-equiv", "property"}
-    if base_url is not None:
-        attributes["base"] = {"href"}
+    attributes["style"] = {"type"}
     attributes["input"] = set(_INPUT_ATTRIBUTES)
     attributes["button"] = {"type", "name", "value", "disabled"}
     attributes["select"] = attributes["option"] = attributes["optgroup"] = set(
@@ -490,21 +464,11 @@ def _build_attributes(security: Security, base_url: str | None) -> dict[str, set
     return attributes
 
 
-def _url_allowed(tag: str, value: str, schemes: set[str]) -> bool:
-    """Check one URL value against *schemes* and the data: media policy."""
-    url = re.sub(r"[\t\n\r]", "", value).strip(_URL_EDGE_CHARS)
-    match = _SCHEME.match(url)
-    if match is None:
-        return True  # relative reference
-    scheme = match.group()[:-1].lower()
-    if scheme not in schemes:
-        return False
-    return scheme != "data" or _data_uri_allowed(tag, url)
-
-
 def _data_uri_allowed(tag: str, url: str) -> bool:
     header = url.partition(":")[2].partition(",")[0]
     media_type = header.partition(";")[0].strip().lower()
+    if tag == "script":
+        return media_type in {"text/javascript", "application/javascript"}
     if not media_type or media_type in {
         "text/plain",
         "text/css",
@@ -516,32 +480,18 @@ def _data_uri_allowed(tag: str, url: str) -> bool:
     return False
 
 
-def _srcset_urls(value: str):
-    """Yield the first whitespace token of each comma-separated candidate."""
-    for part in value.split(","):
-        tokens = part.split()
-        if tokens:
-            yield tokens[0]
+def clean(html: str, security: Security) -> str:
+    """Apply *security* to *html* after resource embedding.
 
-
-def apply_security(html: str, security: Security, base_url: str | None = None) -> str:
-    """Apply *security* to *html* ahead of resource embedding.
-
-    One nh3 structural pass strips active content (scripts, event handlers,
-    form submission attributes, meta redirects) and normalizes the markup.
-    The document skeleton — doctype, html, head, body — does not survive
-    fragment cleaning, so a leading doctype is re-emitted to keep the
-    result out of quirks mode.
+    The doctype does not survive fragment cleaning, so a leading doctype
+    is re-emitted to keep the result out of quirks mode. The pass is
+    skipped entirely when both remove_javascript and disable_forms are
+    off.
     """
-    if not (
-        security.remove_javascript
-        or security.disable_forms
-        or security.remove_meta_redirects
-    ):
+    if not (security.remove_javascript or security.disable_forms):
         return html
 
-    cleaner = _build_cleaner(security, base_url)
-    cleaned = cleaner.clean(html)
+    cleaned = _build_cleaner(security).clean(html)
 
     doctype = _DOCTYPE.match(html)
     if doctype:

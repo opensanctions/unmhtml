@@ -15,7 +15,6 @@ UNSAFE = Security(
     remove_javascript=False,
     sanitize_css=False,
     disable_forms=False,
-    remove_meta_redirects=False,
 )
 
 PNG_DATA_URI = "data:image/png;base64," + base64.b64encode(PNG_BYTES).decode()
@@ -30,7 +29,6 @@ class TestFromMhtml:
         result = to_standalone_html(load_mhtml(simple_mhtml))
 
         assert "<!DOCTYPE html>" in result
-        assert "<title>Test Page</title>" in result
         assert "<h1>Hello World</h1>" in result
         assert 'alt="Test Image"' in result
 
@@ -167,13 +165,13 @@ class TestUnresolvedReferences:
 
         assert "<link" not in result
 
-    def test_favicon_with_resource_embedded(self, sample_resources):
+    def test_favicon_dropped_even_when_resolvable(self, sample_resources):
         html = '<head><link rel="icon" href="image.png"></head>'
         result = to_standalone_html(
             Document(html=html, resources=sample_resources, base_url=BASE_URL)
         )
 
-        assert f'href="{PNG_DATA_URI}"' in result
+        assert "<link" not in result
 
     def test_unresolved_css_url_emptied(self):
         html = "<style>body { background: url('missing.png'); }</style>"
@@ -187,6 +185,20 @@ class TestUnresolvedReferences:
         result = to_standalone_html(Document(html=html, base_url=BASE_URL))
 
         assert 'href="https://example.org/elsewhere"' in result
+
+    def test_relative_anchor_href_made_absolute(self):
+        """No <base> survives cleaning, so relative targets are absolutized
+        against the document's base URL to stay navigable."""
+        html = '<a href="elsewhere.html">Link</a>'
+        result = to_standalone_html(Document(html=html, base_url=BASE_URL))
+
+        assert 'href="https://example.com/elsewhere.html"' in result
+
+    def test_fragment_anchor_href_untouched(self):
+        html = '<a href="#section">Link</a>'
+        result = to_standalone_html(Document(html=html, base_url=BASE_URL))
+
+        assert 'href="#section"' in result
 
     def test_css_fragment_references_kept(self):
         html = "<style>rect { fill: url(#gradient); }</style>"
@@ -353,7 +365,7 @@ class TestSecurityFlags:
 
         assert '<form action="/x"><input name="q"></form>' in result
 
-    def test_meta_redirects_removed_by_default(self):
+    def test_meta_removed_by_default(self):
         html = (
             "<html><head>"
             '<meta http-equiv="refresh" content="0;url=http://evil.com">'
@@ -361,19 +373,8 @@ class TestSecurityFlags:
         )
         result = to_standalone_html(Document(html=html))
 
-        assert "http-equiv" not in result
-        assert '<meta content="0;url=http://evil.com">' in result
+        assert "<meta" not in result
         assert "Hi" in result
-
-    def test_meta_redirects_preserved_when_disabled(self):
-        html = (
-            "<html><head>"
-            '<meta http-equiv="refresh" content="5">'
-            "</head><body>Hi</body></html>"
-        )
-        result = to_standalone_html(Document(html=html), security=UNSAFE)
-
-        assert 'http-equiv="refresh"' in result
 
     def test_unsafe_conversion_preserves_content(self, sample_resources):
         html = (

@@ -61,7 +61,7 @@ class TestSchemeSmuggling:
             ), scheme
 
     def test_smuggled_scheme_in_img_src(self):
-        assert convert('<img src="jav&#x09;ascript:alert(1)">') == "<img>"
+        assert convert('<img src="jav&#x09;ascript:alert(1)">') == '<img src="">'
 
 
 class TestDataUriPolicy:
@@ -140,8 +140,10 @@ class TestSvgAndUnknownElements:
 
 
 class TestSrcset:
-    def test_smuggled_scheme_candidate_drops_whole_attribute(self):
-        assert convert('<img srcset="javascript:alert(1) 1x, ok.png 2x">') == "<img>"
+    def test_smuggled_scheme_candidate_neutralized(self):
+        assert convert('<img srcset="javascript:alert(1) 1x, ok.png 2x">') == (
+            '<img srcset="">'
+        )
 
     def test_relative_candidates_survive_and_embed(self):
         result = convert('<img srcset="a.png 1x, b.png 2x">', PNG_RESOURCES)
@@ -174,42 +176,48 @@ class TestMalformedMarkup:
         )
 
 
-class TestMetaDefusal:
-    def test_refresh_mixed_case(self):
+class TestHeadFurnitureRemoved:
+    """meta, link, title and base never survive cleaning — nothing from the
+    head can fetch, redirect, or leak the viewer at display time."""
+
+    def test_meta_refresh_mixed_case_removed(self):
         assert (
-            convert('<meta http-equiv="Refresh" content="0;url=http://evil.com">')
-            == '<meta content="0;url=http://evil.com">'
+            convert('<meta http-equiv="Refresh" content="0;url=http://evil.com">') == ""
         )
 
-    def test_refresh_attribute_order_reversed(self):
-        assert (
-            convert('<meta content="1;url=http://evil.com" http-equiv="rEfReSh">')
-            == '<meta content="1;url=http://evil.com">'
-        )
+    def test_fetch_making_link_rels_removed(self):
+        # The original leak: these pass scheme checks and are not stylesheets,
+        # so without the default tag set they would fetch at display time.
+        for rel in (
+            "preload",
+            "prefetch",
+            "preconnect",
+            "modulepreload",
+            "dns-prefetch",
+            "prerender",
+            "manifest",
+            "icon",
+        ):
+            assert convert(f'<link rel="{rel}" href="https://evil.example/x">') == (
+                ""
+            ), rel
 
-    def test_set_cookie_uppercase(self):
-        assert (
-            convert('<META HTTP-EQUIV="Set-Cookie" content="a=b">')
-            == '<meta content="a=b">'
-        )
+    def test_fetch_making_link_rel_removed_even_when_resolvable(self):
+        html = '<link rel="preload" href="https://example.com/x">'
+        assert convert(html, PNG_RESOURCES) == ""
 
-    def test_dns_prefetch_name_dropped(self):
-        assert (
-            convert('<meta content="evil.com" name="DNS-PREFETCH">')
-            == '<meta content="evil.com">'
-        )
+    def test_link_relattributed_not_stylesheet(self):
+        # "not-stylesheet" contains the substring, so it inlines like one;
+        # either way no <link> may survive.
+        html = '<link rel="not-stylesheet" href="https://evil.example/x.css">'
+        assert convert(html) == ""
 
-    def test_charset_and_viewport_untouched(self):
-        html = (
-            '<meta charset="utf-8"><meta name="viewport" content="width=device-width">'
-        )
-        assert convert(html) == html
+    def test_base_tag_removed(self):
+        html = '<base href="https://evil.example/">'
+        assert convert(html) == ""
 
-    def test_harmless_http_equiv_survives(self):
-        assert (
-            convert('<meta http-equiv="content-type" content="text/html">')
-            == '<meta http-equiv="content-type" content="text/html">'
-        )
+    def test_title_text_does_not_leak(self):
+        assert convert("<title>alert-style text</title><p>x</p>") == "<p>x</p>"
 
 
 class TestFormDefusal:
@@ -323,7 +331,7 @@ class TestDocumentShape:
             "<!DOCTYPE html>"
             "<html><head><title>t</title></head><body><h1>x</h1></body></html>"
         )
-        assert convert(html) == "<!DOCTYPE html>\n<title>t</title><h1>x</h1>"
+        assert convert(html) == "<!DOCTYPE html>\n<h1>x</h1>"
 
     def test_legacy_doctype_re_emitted_verbatim(self):
         html = '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"><p>x</p>'

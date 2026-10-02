@@ -23,9 +23,11 @@ def embed(html: str, resources: Mapping[str, Resource], base_url: str | None) ->
 
     References are resolved against *base_url* and matched exactly. What
     cannot be resolved is neutralized (empty src, dropped srcset candidates,
-    dropped stylesheet and icon links, empty CSS url()) so the result never
-    makes network requests. Anchor hrefs keep their targets: they navigate
-    rather than load.
+    empty CSS url()) so the result never makes network requests. Anchor
+    hrefs navigate rather than load: they are kept, made absolute — the
+    cleaner that runs afterwards strips <base>, so nothing else would
+    resolve them. Link tags other than stylesheets are left for the cleaner
+    to drop along with the rest of the head.
     """
     parser = _EmbeddingParser(resources, base_url)
     parser.feed(html)
@@ -84,14 +86,11 @@ class _EmbeddingParser(HTMLParser):
                 )
         return ", ".join(items)
 
-    def _embed_href(self, ref: str) -> str:
-        """Data URI for a link reference, unchanged when unresolvable."""
-        if ref.startswith("data:"):
+    def _navigation_href(self, ref: str) -> str:
+        """Anchor target, kept but made absolute: anchors navigate."""
+        if ref.startswith("#"):
             return ref
-        resource = self._lookup(ref)
-        if resource is None:
-            return ref
-        return self._data_uri(resource, ref)
+        return self._resolve(ref)
 
     def _replace_css_urls(self, css_text: str, base: str | None = None) -> str:
         def replace(match: re.Match) -> str:
@@ -126,12 +125,6 @@ class _EmbeddingParser(HTMLParser):
                 # Unresolvable stylesheet: drop the tag
                 return
 
-            if rel in ("icon", "apple-touch-icon"):
-                href = attr_dict.get("href") or ""
-                if href and not href.startswith("data:") and self._lookup(href) is None:
-                    # Missing icon: drop the tag
-                    return
-
         new_attrs = []
         for name, value in attrs:
             name_lower = name.lower()
@@ -140,12 +133,16 @@ class _EmbeddingParser(HTMLParser):
                 "poster",
                 "data",
                 "background",
+                "xlink:href",
             ):
                 value = self._embed_src(value)
             elif value is not None and name_lower == "srcset":
                 value = self._embed_srcset(value)
             elif value is not None and name_lower == "href":
-                value = self._embed_href(value)
+                if tag_lower in ("a", "area"):
+                    value = self._navigation_href(value)
+                else:
+                    value = self._embed_src(value)
             elif name_lower == "style" and value is not None:
                 # HTMLParser already decoded entities, so url() quotes are plain
                 value = self._replace_css_urls(value)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .document import Document
 from .embed import embed
-from .security import Security, apply_security, sanitize_css
+from .security import Security, clean, sanitize_css
 
 DEFAULT_SECURITY = Security()
 
@@ -14,15 +14,17 @@ def to_standalone_html(
 ) -> str:
     """Return *document* as a single self-contained HTML string.
 
-    A structural nh3 pass runs before embedding — it normalizes the
-    document and strips active content (scripts, event handlers, form
-    submission attributes, meta redirects). CSS sanitization runs after
-    embedding, so every reference the document can resolve is embedded as
-    a data URI and only genuinely external CSS survives to be stripped.
+    Resources are embedded first, so the cleaner that follows can afford
+    to be strict: a single nh3 pass — nh3's defaults plus the tag and
+    attribute sets archived pages need — strips active content and the
+    head's request-making furniture (link, meta, base) and reduces the
+    document to a fragment. CSS sanitization runs last, when every
+    reference the document could resolve is already a data URI and only
+    genuinely external CSS is left to strip.
     """
-    html = apply_security(document.html, security, base_url=document.base_url)
+    html = embed(document.html, document.resources, document.base_url)
 
-    html = embed(html, document.resources, document.base_url)
+    html = clean(html, security)
 
     if security.sanitize_css:
         html = sanitize_css(html)
