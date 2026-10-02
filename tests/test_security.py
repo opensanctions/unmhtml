@@ -53,11 +53,11 @@ class TestJavascriptRemovedByDefault:
         assert "<div>x</div>" in result
 
     def test_expression_css_stripped_from_inline_styles(self):
-        html = "<div style=\"width: expression(document.body.scrollWidth)\">t</div>"
+        html = '<div style="width: expression(document.body.scrollWidth)">t</div>'
         result = to_standalone_html(Document(html=html))
 
         assert "expression" not in result
-        assert "<div style=\"width: \">t</div>" in result
+        assert '<div style="width: ">t</div>' in result
 
     def test_complex_document(self):
         html = """<!DOCTYPE html>
@@ -205,7 +205,7 @@ class TestMetaRedirectsRemovedByDefault:
 class TestUnsafePassthrough:
     def test_no_cleaning_when_all_flags_disabled(self):
         html = (
-            '<body onload="x()"><script>alert(\'hi\')</script>'
+            "<body onload=\"x()\"><script>alert('hi')</script>"
             '<form action="/x"><input name="q"></form>'
             '<meta http-equiv="refresh" content="0;url=http://evil.com">'
             "</body>"

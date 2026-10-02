@@ -396,9 +396,7 @@ class TestSecurityFlags:
 
 class TestStructurePreservation:
     def test_comments_entities_and_doctype_preserved(self):
-        html = (
-            "<!DOCTYPE html>\n<!-- a comment -->\n<p>5 &lt; 6 &amp; 7 &gt; 4 &#65; &copy;</p>"
-        )
+        html = "<!DOCTYPE html>\n<!-- a comment -->\n<p>5 &lt; 6 &amp; 7 &gt; 4 &#65; &copy;</p>"
         result = to_standalone_html(Document(html=html))
 
         assert "<!DOCTYPE html>" in result

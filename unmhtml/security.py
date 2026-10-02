@@ -422,9 +422,7 @@ def _build_cleaner(security: Security, base_url: str | None) -> nh3.Cleaner:
     )
 
 
-def _build_attributes(
-    security: Security, base_url: str | None
-) -> dict[str, set[str]]:
+def _build_attributes(security: Security, base_url: str | None) -> dict[str, set[str]]:
     attributes = deepcopy(nh3.ALLOWED_ATTRIBUTES)
     attributes["*"] = {
         "style",
@@ -521,9 +519,7 @@ def _srcset_urls(value: str):
             yield tokens[0]
 
 
-def apply_security(
-    html: str, security: Security, base_url: str | None = None
-) -> str:
+def apply_security(html: str, security: Security, base_url: str | None = None) -> str:
     """Apply *security* to *html* ahead of resource embedding.
 
     One nh3 structural pass strips active content (scripts, event handlers,
