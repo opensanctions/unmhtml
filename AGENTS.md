@@ -7,7 +7,7 @@ changes are breaking. Single runtime dependency, nh3 — keep it that way.
 ## Commands
 
 ```bash
-uv sync               # env setup — use uv, not pip
+uv sync --extra test  # env setup — use uv, not pip; the test extra carries pytest
 uv run pytest         # tests; run before any change is done
 uv run ruff check .
 uv run ruff format .
