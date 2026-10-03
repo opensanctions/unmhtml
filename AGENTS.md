@@ -27,6 +27,8 @@ Ruff runs its defaults; there is no project config to consult.
   degradation.
 - Changes to sanitizer behavior or output shape need adversarial coverage
   (`tests/test_adversarial.py`).
-- Releases: bump `version` in `pyproject.toml` and `__version__` in
-  `unmhtml/__init__.py` together; publishing runs automatically from a
-  GitHub release.
+- Releases: never bump `version` in `pyproject.toml` or `__version__`
+  in `unmhtml/__init__.py` unless explicitly asked to cut a release —
+  a breaking API change is not a bump trigger; the maintainer decides
+  when to release. When asked, bump both together; publishing runs
+  automatically from a GitHub release.
