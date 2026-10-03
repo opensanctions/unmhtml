@@ -31,7 +31,7 @@ from .document import Document, Resource
 from .mhtml import load_mhtml
 from .security import Security
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "Document",
     "Resource",
