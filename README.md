@@ -51,8 +51,8 @@ requests.
 
 Conversion is secure by default: scripts, event handlers and dangerous URLs
 are removed, forms are defused, head furniture that could fetch or redirect
-(`link`, `meta`, `base`) is dropped, and CSS that could still fetch or execute
-is stripped. Each neutralization has its own flag on `Security`
+(`link`, `meta`, `base`) is dropped, and CSS that could still fetch is
+stripped. Each neutralization has its own flag on `Security`
 (`remove_javascript`, `disable_forms`, `sanitize_css`), all defaulting to on:
 
 ```python

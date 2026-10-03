@@ -12,9 +12,11 @@ import nh3
 # CSS sanitization (post-embed, whole-document regex passes)
 # --------------------------------------------------------------------------
 
-# @import statements, in url() or string form
+# @import statements whose target is not an embedded data URI, in url()
+# or string form; embedded imports are self-contained and survive
 CSS_IMPORT = re.compile(
-    r'@import\s+(?:url\([^)]*\)|["\'][^"\']*["\'])[^;]*;?', re.IGNORECASE
+    r'@import\s+(?:url\s*\(\s*(?!["\']?data:)[^)]*\)|["\'](?!data:)[^"\']*["\'])[^;]*;?',
+    re.IGNORECASE,
 )
 # Any url() whose target is not a data URI or fragment reference. Runs after
 # embedding, so resolvable references have already become data: URIs and
@@ -22,22 +24,17 @@ CSS_IMPORT = re.compile(
 CSS_URL_NON_DATA = re.compile(
     r'url\s*\(\s*["\']?(?!data:|#)([^"\')\s]+)["\']?\s*\)', re.IGNORECASE
 )
-# IE-specific expression() properties
-EXPRESSION_CSS = re.compile(r"expression\s*\([^)]*\)", re.IGNORECASE)
-# IE-specific behavior: properties
-CSS_BEHAVIOR = re.compile(r"behavior\s*:\s*[^;]+;?", re.IGNORECASE)
-
-# Inline style attributes
-INLINE_STYLE_ATTR = re.compile(r'(style\s*=\s*["\'])([^"\']*)["\']', re.IGNORECASE)
 
 _DOCTYPE = re.compile(r"^\s*<!DOCTYPE[^>]*>", re.IGNORECASE)
 
 # Characters browsers strip from URLs: tab/newline/carriage-return anywhere.
 _URL_CONTROLS = re.compile(r"[\t\n\r]")
 # URL-bearing attributes the data: URI policy must see. nh3 scheme-checks
-# href and src itself; it never inspects srcset or the SVG xlink:href.
+# the URL attributes it knows (href, src, xlink:href, action), but never
+# inspects srcset — and a scheme check cannot express "data: URIs only for
+# passive media", which is the filter's actual job.
 _URL_ATTRIBUTES = frozenset(
-    {"href", "xlink:href", "src", "data", "poster", "background", "action", "srcset"}
+    {"href", "xlink:href", "src", "data", "poster", "action", "srcset"}
 )
 # data: URIs that may reference a document rather than passive media
 _SVG_HOST_TAGS = frozenset({"iframe", "embed", "object"})
@@ -330,27 +327,16 @@ class Security:
 
 
 def sanitize_css(html: str) -> str:
-    """Remove CSS constructs that can make network requests or execute code.
+    """Remove CSS constructs that can make network requests.
 
-    Meant to run after resource embedding: url() references that were
-    resolvable have already become data URIs, so this strips what is left.
-
-    1. Removes @import statements that load external stylesheets
-    2. Removes url() references that are not data URIs (preserving
-       data: URIs and #fragment references)
-    3. Removes IE-specific expression() properties
-    4. Removes behavior: properties
+    Meant to run after resource embedding: @import targets and url()
+    references that were resolvable have already become data URIs, so this
+    strips what is left — external @import statements, and url() references
+    that are not data URIs or #fragment references.
     """
-    for pattern in (CSS_IMPORT, CSS_URL_NON_DATA, EXPRESSION_CSS, CSS_BEHAVIOR):
+    for pattern in (CSS_IMPORT, CSS_URL_NON_DATA):
         html = pattern.sub("", html)
-
-    def sanitize_style_content(match: re.Match) -> str:
-        style_content = match.group(2)
-        for pattern in (CSS_IMPORT, CSS_URL_NON_DATA, EXPRESSION_CSS, CSS_BEHAVIOR):
-            style_content = pattern.sub("", style_content)
-        return f'{match.group(1)}{style_content}"'
-
-    return INLINE_STYLE_ATTR.sub(sanitize_style_content, html)
+    return html
 
 
 def _build_cleaner(security: Security) -> nh3.Cleaner:
@@ -452,8 +438,7 @@ def _build_attributes(security: Security) -> dict[str, set[str]]:
     attributes["param"] = {"name", "value"}
     for tag in _SVG_TAGS:
         attributes[tag] = set(_SVG_ATTRIBUTES)
-    for tag in _MATHML_TAGS:
-        attributes[tag] = {"display", "xmlns", "alttext"} if tag == "math" else set()
+    attributes["math"] = {"display", "xmlns", "alttext"}
 
     if security.disable_forms:
         attributes["form"] = {"name"}

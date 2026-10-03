@@ -280,6 +280,28 @@ class TestEmbeddingOrder:
         assert "@import" not in result
         assert "color: red" in result
 
+    def test_import_chain_embedded_recursively(self, sample_resources):
+        """A resolvable @import survives as an embedded stylesheet whose own
+        references were resolved against the stylesheet's URL."""
+        html = '<head><link rel="stylesheet" href="style.css"></head>'
+        resources = dict(sample_resources)
+        resources["https://example.com/style.css"] = Resource(
+            b'@import url("other.css");', "text/css"
+        )
+        resources["https://example.com/other.css"] = Resource(
+            b".hero { background: url('pattern.png'); }", "text/css"
+        )
+        result = to_standalone_html(
+            Document(html=html, resources=resources, base_url=BASE_URL)
+        )
+
+        embedded = re.search(r'@import url\((data:text/css;base64,[^")]+)\)', result)
+        assert embedded is not None
+        decoded = base64.b64decode(embedded.group(1).partition(",")[2]).decode()
+        assert f"url({PNG_DATA_URI})" in decoded
+        assert "other.css" not in result
+        assert "pattern.png" not in result
+
 
 class TestSanitizationInvariant:
     """The security invariant: after conversion, no CSS url() survives that

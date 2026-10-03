@@ -23,7 +23,9 @@ def embed(html: str, resources: Mapping[str, Resource], base_url: str | None) ->
 
     References are resolved against *base_url* and matched exactly. What
     cannot be resolved is neutralized (empty src, dropped srcset candidates,
-    empty CSS url()) so the result never makes network requests. Anchor
+    empty CSS url()) so the result never makes network requests. Imported
+    stylesheets are embedded as data URIs after their own references have
+    been resolved — or neutralized — the same way. Anchor
     hrefs navigate rather than load: they are kept, made absolute — the
     cleaner that runs afterwards strips <base>, so nothing else would
     resolve them. Link tags other than stylesheets are left for the cleaner
@@ -55,9 +57,8 @@ class _EmbeddingParser(HTMLParser):
     def _lookup(self, ref: str, base: str | None = None) -> Resource | None:
         return self._resources.get(self._resolve(ref, base))
 
-    def _data_uri(self, resource: Resource, url: str) -> str:
-        mime_type = resource.mime_type or _guess_mime_type(url)
-        payload = base64.b64encode(resource.data).decode("ascii")
+    def _data_uri(self, data: bytes, mime_type: str) -> str:
+        payload = base64.b64encode(data).decode("ascii")
         return f"data:{mime_type};base64,{payload}"
 
     def _embed_src(self, ref: str) -> str:
@@ -67,7 +68,9 @@ class _EmbeddingParser(HTMLParser):
         resource = self._lookup(ref)
         if resource is None:
             return ""
-        return self._data_uri(resource, ref)
+        return self._data_uri(
+            resource.data, resource.mime_type or _guess_mime_type(ref)
+        )
 
     def _embed_srcset(self, value: str) -> str:
         """Srcset with resolvable candidates embedded, others dropped."""
@@ -79,11 +82,10 @@ class _EmbeddingParser(HTMLParser):
                 continue
             resource = self._lookup(ref)
             if resource is not None:
-                items.append(
-                    match.group(0)
-                    .strip(" ,")
-                    .replace(ref, self._data_uri(resource, ref))
+                data_uri = self._data_uri(
+                    resource.data, resource.mime_type or _guess_mime_type(ref)
                 )
+                items.append(match.group(0).strip(" ,").replace(ref, data_uri))
         return ", ".join(items)
 
     def _navigation_href(self, ref: str) -> str:
@@ -92,15 +94,32 @@ class _EmbeddingParser(HTMLParser):
             return ref
         return self._resolve(ref)
 
-    def _replace_css_urls(self, css_text: str, base: str | None = None) -> str:
+    def _replace_css_urls(
+        self, css_text: str, base: str | None = None, seen: frozenset[str] = frozenset()
+    ) -> str:
+        """Rewrite every resolvable url() to a data URI, others to url("").
+
+        Stylesheet references (@import targets) carry CSS themselves: their
+        text is rewritten first, resolving against the stylesheet's own URL,
+        with *seen* breaking import cycles.
+        """
+
         def replace(match: re.Match) -> str:
             ref = match.group(1)
             if ref.startswith(("data:", "#")):
                 return match.group(0)
-            resource = self._lookup(ref, base)
+            url = self._resolve(ref, base)
+            if url in seen:
+                return 'url("")'
+            resource = self._resources.get(url)
             if resource is None:
                 return 'url("")'
-            return f"url({self._data_uri(resource, ref)})"
+            mime_type = resource.mime_type or _guess_mime_type(ref)
+            if mime_type == "text/css":
+                css_text = resource.data.decode("utf-8", errors="replace")
+                css_text = self._replace_css_urls(css_text, base=url, seen=seen | {url})
+                return f"url({self._data_uri(css_text.encode(), mime_type)})"
+            return f"url({self._data_uri(resource.data, mime_type)})"
 
         return _CSS_URL.sub(replace, css_text)
 

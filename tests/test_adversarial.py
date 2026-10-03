@@ -7,6 +7,7 @@ shape.
 """
 
 import base64
+import re
 
 from unmhtml import Document, Resource, Security, to_standalone_html
 
@@ -293,6 +294,39 @@ class TestCssPostEmbed:
 
         assert "url(#g)" in result
         assert "url(data:image/png;base64,iVBORw0KGgo=)" in result
+
+    def test_imported_sheet_cannot_smuggle_requests(self):
+        # The imported sheet's own url()s must be neutralized at embed time:
+        # CSS sanitization is off here, and the payload hides inside base64.
+        resources = {
+            "https://example.com/nested.css": Resource(
+                b"p { background: url(https://evil.example/track.png); }",
+                "text/css",
+            )
+        }
+        result = convert(
+            "<style>@import url(nested.css);</style>",
+            resources,
+            security=Security(sanitize_css=False),
+        )
+
+        embedded = re.search(r"data:text/css;base64,([^\")\']+)", result)
+        assert base64.b64decode(embedded.group(1)) == b'p { background: url(""); }'
+
+    def test_circular_imports_terminate(self):
+        resources = {
+            "https://example.com/a.css": Resource(
+                b"@import url(b.css); .a { background: url(//evil.example/a.png); }",
+                "text/css",
+            ),
+            "https://example.com/b.css": Resource(
+                b"@import url(a.css); .b { background: url(//evil.example/b.png); }",
+                "text/css",
+            ),
+        }
+        result = convert("<style>@import url(a.css);</style>", resources)
+
+        assert "evil.example" not in result
 
 
 class TestCommentsDropped:

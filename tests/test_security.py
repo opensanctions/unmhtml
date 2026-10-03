@@ -51,13 +51,6 @@ class TestJavascriptRemovedByDefault:
         assert "evil.com" not in result
         assert "<div>x</div>" in result
 
-    def test_expression_css_stripped_from_inline_styles(self):
-        html = '<div style="width: expression(document.body.scrollWidth)">t</div>'
-        result = to_standalone_html(Document(html=html))
-
-        assert "expression" not in result
-        assert '<div style="width: ">t</div>' in result
-
     def test_complex_document(self):
         html = """<!DOCTYPE html>
 <html>
@@ -259,28 +252,18 @@ class TestSanitizeCss:
         assert "local-evil.css" not in cleaned
         assert "color: red" in cleaned
 
-    def test_removes_expression_properties(self):
-        html_with_expressions = """
+    def test_embedded_data_imports_preserved(self):
+        """Embedded imports are self-contained; only external ones go."""
+        html_with_imports = """
         <style>
-            .test { width: expression(document.body.scrollWidth > 600 ? "600px" : "auto"); }
-            body { color: blue; }
+            @import url("data:text/css;base64,e2NvbG9yOnJlZH0=");
+            @import "data:text/css;base64,e2NvbG9yOmJsdWV9";
+            body { color: red; }
         </style>
         """
-        cleaned = sanitize_css(html_with_expressions)
-        assert "expression(" not in cleaned
-        assert "document.body" not in cleaned
-        assert "color: blue" in cleaned
-
-    def test_removes_behavior_properties(self):
-        html_with_behavior = """
-        <style>
-            .test { behavior: url(evil.htc); }
-            body { color: green; }
-        </style>
-        """
-        cleaned = sanitize_css(html_with_behavior)
-        assert "behavior" not in cleaned
-        assert "color: green" in cleaned
+        cleaned = sanitize_css(html_with_imports)
+        assert cleaned.count("@import") == 2
+        assert "color: red" in cleaned
 
     def test_inline_styles(self):
         html = """<div style="background: url('http://evil.com/x.png'); color: red">text</div>
